@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>QR-Share | Serverless P2P Filesharing</title>
+ <meta name="description" content="100% serverless, zero-dependency, peer-to-peer filesharing in your browser via WebRTC and QR code signaling.">
+ <link rel="stylesheet" href="style.css">
+ 
+ <!-- CDNs for QR and Compression -->
+ <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js" integrity="sha512-g2TeAWw5GPnX7z0Kn8nFbYfeHcvAu/tx6d6mrLe/90mkCxO+RcptyYpksUz35EO337F83bZwcmUyHiHamspkfg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+ <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js" integrity="sha512-pUhApVQtLbnpLtJn6DuzDD5o2xtmLJnJ7oBoMsBnzOkVkpqofGLGPaBJ6ayD2zQe3lCgCibhJBi4cj5wAxwVKA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+ <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+</head>
+<body>
+ <div id="app" class="state-idle">
+  <!-- Header -->
+  <header class="app-header">
+   <div class="logo">
+    <svg class="logo-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+     <rect x="3" y="3" width="6" height="6" rx="1.5" stroke="currentColor" stroke-width="2"/>
+     <rect x="3" y="15" width="6" height="6" rx="1.5" stroke="currentColor" stroke-width="2"/>
+     <rect x="15" y="3" width="6" height="6" rx="1.5" stroke="currentColor" stroke-width="2"/>
+     <path d="M15 15H17M17 15V17M17 15H19M19 15V19M15 19H17M17 19H19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    <span class="logo-text">QR-Share</span>
+   </div>
+   <div class="header-badge">
+    <span class="status-indicator-dot"></span>
+    <span class="header-badge-text">P2P SECURE</span>
+   </div>
+  </header>
+
+  <!-- Main Workspace Container -->
+  <main class="app-workspace">
+   <div class="card-container">
+    
+    <!-- ==================== IDLE STATE ==================== -->
+    <section id="panel-idle" class="panel">
+     <div class="panel-header">
+      <h1 class="panel-title">Transfer Files Privately</h1>
+      <p class="panel-subtitle">Direct, serverless peer-to-peer file sharing via local QR-code handshakes.</p>
+     </div>
+     
+     <!-- Equal Wizard Columns (Send | Receive) -->
+     <div class="wizard-grid">
+      
+      <!-- Send Card (Drop Zone) -->
+      <div id="dropzone" class="wizard-card">
+       <input type="file" id="file-input" class="wizard-card-input" aria-label="Choose file to send">
+       <svg class="wizard-card-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+       </svg>
+       <h2 class="wizard-card-title">Send File</h2>
+       <p class="wizard-card-desc">Drag & drop a file here, or click to browse local storage.</p>
+      </div>
+      
+      <!-- Receive Card -->
+      <div id="btn-receive-mode" class="wizard-card" tabindex="0" role="button" aria-label="Scan or receive file">
+       <svg class="wizard-card-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+       </svg>
+       <h2 class="wizard-card-title">Receive File</h2>
+       <p class="wizard-card-desc">Point your camera at a peer's QR code, or paste their Share Link.</p>
+      </div>
+      
+     </div>
+    </section>
+
+    <!-- ==================== GATHERING ICE STATE ==================== -->
+    <section id="panel-gathering-ice" class="panel">
+     <div class="loading-state">
+      <div class="skeleton-container">
+       <div class="skeleton-circle pulsing"></div>
+       <div class="skeleton-line pulsing w-3/4"></div>
+       <div class="skeleton-line pulsing w-1/2"></div>
+      </div>
+      <h2 class="panel-title text-center mt-6">Analyzing Local Network</h2>
+      <p class="panel-subtitle text-center">Configuring WebRTC peer connection and gathering STUN route candidates...</p>
+     </div>
+    </section>
+
+    <!-- ==================== AWAITING SCAN STATE (SENDER) ==================== -->
+    <section id="panel-awaiting-scan" class="panel">
+     <div class="panel-header">
+      <h2 class="panel-title">Handshake Connection</h2>
+      <p class="panel-subtitle">Select your preferred handshaking relay to establish the direct P2P link.</p>
+     </div>
+     
+     <!-- Segmented Tab Switcher -->
+     <div class="segmented-tabs" id="sender-tabs">
+      <button class="tab-btn active" data-tab="remote" type="button">Remote Link (Default)</button>
+      <button class="tab-btn" data-tab="local" type="button">Local QR Scan</button>
+     </div>
+     
+     <!-- Remote Mode Content -->
+     <div id="sender-view-remote" class="tab-content">
+      <div class="remote-action-card mb-4">
+       <div class="remote-action-title">Remote Share Link</div>
+       <p class="remote-action-desc">Copy your secure P2P Share Link below, send it to your peer, and paste their Answer Code to connect.</p>
+       
+       <!-- Step 1: Copy Link (Primary) -->
+       <button id="btn-copy-share-link" class="btn btn-primary w-full mt-1 mb-3" type="button">
+        <svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+        </svg>
+        Copy Share Link
+       </button>
+       
+       <div class="divider mt-2 mb-2"><span>Then</span></div>
+       
+       <!-- Step 2: Paste Answer (Secondary) -->
+       <button id="btn-sender-paste-connect" class="btn btn-primary-outline w-full mt-2" type="button">
+        <svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+        </svg>
+        Paste Answer & Connect
+       </button>
+       <textarea id="manual-sdp-answer" class="form-textarea mt-3" style="display: none;" placeholder="Paste the receiver's compressed answer code manually here..."></textarea>
+       <button id="btn-manual-answer-submit" class="btn btn-secondary btn-sm w-full mt-2" style="display: none;" type="button">Connect Manually</button>
+      </div>
+     </div>
+     
+     <!-- Local Mode Content -->
+     <div id="sender-view-local" class="tab-content" style="display: none;">
+      <div class="handshake-grid">
+       <div class="qr-wrapper">
+        <canvas id="qr-offer-canvas" class="qr-canvas"></canvas>
+        <div class="qr-caption">SDP Offer (Compressed)</div>
+        <button id="btn-copy-offer" class="btn btn-secondary btn-sm mt-2 w-full" type="button">
+         <svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+         </svg>
+         Copy Offer
+        </button>
+       </div>
+       
+       <div class="camera-wrapper">
+        <div class="video-container">
+         <video id="sender-video" class="webcam-feed" playsinline></video>
+         <div class="scanner-reticle"></div>
+         <div class="camera-placeholder">
+          <svg class="placeholder-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+          <span>Camera ready to scan answer</span>
+         </div>
+        </div>
+       </div>
+      </div>
+     </div>
+
+     <div class="file-card mt-2">
+      <div class="file-card-details">
+       <svg class="file-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+       </svg>
+       <div class="file-card-meta">
+        <span id="send-file-name" class="file-name-txt">archive.zip</span>
+        <span id="send-file-size" class="file-size-txt">0.0 MB</span>
+       </div>
+      </div>
+      <button id="btn-cancel-send" class="btn btn-secondary btn-sm" type="button">Cancel</button>
+     </div>
+    </section>
+
+    <!-- ==================== SCANNING STATE (RECEIVER) ==================== -->
+    <section id="panel-scanning" class="panel">
+     <div class="panel-header">
+      <h2 class="panel-title">Receive File</h2>
+      <p class="panel-subtitle">Establish a secure link to download P2P files. Choose your handshake method.</p>
+     </div>
+     
+     <!-- Segmented Tab Switcher -->
+     <div class="segmented-tabs" id="receiver-tabs">
+      <button class="tab-btn active" data-tab="remote" type="button">Remote Link (Default)</button>
+      <button class="tab-btn" data-tab="local" type="button">Local QR Scan</button>
+     </div>
+     
+     <!-- Remote Mode Content -->
+     <div id="receiver-view-remote" class="tab-content">
+      <div class="remote-action-card mb-4">
+       <div class="remote-action-title">Joining Remotely</div>
+       <p class="remote-action-desc">If your peer sent you a Share Link code, click below to paste and connect:</p>
+       <button id="btn-receiver-paste-connect" class="btn btn-primary w-full" type="button">
+        <svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+        </svg>
+        Paste Link & Connect
+       </button>
+       <textarea id="manual-sdp-offer" class="form-textarea mt-3" style="display: none;" placeholder="Paste the sender's offer code manually here..."></textarea>
+       <button id="btn-manual-submit" class="btn btn-secondary btn-sm w-full mt-2" style="display: none;" type="button">Connect Manually</button>
+      </div>
+     </div>
+     
+     <!-- Local Mode Content -->
+     <div id="receiver-view-local" class="tab-content" style="display: none;">
+      <div class="full-scanner-container mb-4">
+       <div class="video-container large">
+        <video id="receiver-video" class="webcam-feed" playsinline></video>
+        <canvas id="scanner-helper-canvas" style="display: none;"></canvas>
+        <div class="scanner-reticle"></div>
+        <div class="scanner-active-overlay">
+         <span class="scanner-dot"></span>
+         <span>Active Scanner</span>
+        </div>
+        <div class="camera-placeholder">
+         <svg class="placeholder-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+         </svg>
+         <span>Waiting for camera permission...</span>
+        </div>
+       </div>
+      </div>
+     </div>
+     
+     <button id="btn-cancel-receive" class="btn btn-secondary w-full" type="button">Cancel</button>
+    </section>
+
+    <!-- ==================== AWAITING RESPONSE STATE (RECEIVER) ==================== -->
+    <section id="panel-awaiting-response" class="panel">
+     <div class="panel-header">
+      <h2 class="panel-title">Provide Handshake Answer</h2>
+      <p class="panel-subtitle">Provide your connection answer to the sender to complete the P2P handshake link.</p>
+     </div>
+     
+     <!-- Segmented Tab Switcher -->
+     <div class="segmented-tabs" id="receiver-response-tabs">
+      <button class="tab-btn active" data-tab="remote" type="button">Remote Link (Default)</button>
+      <button class="tab-btn" data-tab="local" type="button">Local QR Scan</button>
+     </div>
+     
+     <!-- Remote Mode Content -->
+     <div id="receiver-response-view-remote" class="tab-content">
+      <div class="remote-action-card mb-4">
+       <div class="remote-action-title">Remote Answer Code</div>
+       <p class="remote-action-desc">Copy your secure P2P Answer Code below and send it to the sender. Once they paste it, your connection will finalize.</p>
+       
+       <button id="btn-copy-answer-remote" class="btn btn-primary w-full mt-1" type="button">
+        <svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+        </svg>
+        Copy Answer Code
+       </button>
+      </div>
+      
+      <div class="wait-alert mt-4">
+       <div class="spinner-dot-pulse"></div>
+       <span>Waiting for sender to paste code and connect...</span>
+      </div>
+     </div>
+     
+     <!-- Local Mode Content -->
+     <div id="receiver-response-view-local" class="tab-content" style="display: none;">
+      <div class="qr-container-centered">
+       <p class="panel-subtitle text-center mb-4">Hold this screen up to the sender's webcam to complete the handshaking sequence.</p>
+       <div class="qr-wrapper">
+        <canvas id="qr-answer-canvas" class="qr-canvas"></canvas>
+        <div class="qr-caption">SDP Answer (Compressed)</div>
+        <button id="btn-copy-answer" class="btn btn-secondary btn-sm mt-2 w-full" type="button">
+         <svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+         </svg>
+         Copy Answer Code
+        </button>
+       </div>
+       
+       <div class="wait-alert mt-4">
+        <div class="spinner-dot-pulse"></div>
+        <span>Waiting for sender's camera to scan this screen...</span>
+       </div>
+      </div>
+     </div>
+
+     <button id="btn-cancel-response" class="btn btn-secondary w-full mt-6" type="button">Cancel</button>
+    </section>
+
+    <!-- ==================== CONNECTING STATE ==================== -->
+    <section id="panel-connecting" class="panel">
+     <div class="connecting-flow">
+      <div class="handshake-node-visual">
+       <div class="node-circle sender">
+        <span>Sender</span>
+       </div>
+       <div class="node-connecting-line">
+        <div class="node-laser-pulse"></div>
+       </div>
+       <div class="node-circle receiver">
+        <span>Receiver</span>
+       </div>
+      </div>
+      
+      <h2 class="panel-title text-center mt-6">Establishing Link</h2>
+      <p class="panel-subtitle text-center" id="connecting-status-txt">Synchronizing DTLS keys and establishing peer connection...</p>
+      
+      <div class="diagnostic-logs" id="diagnostic-logs">
+       <div class="log-entry system">Initializing local network sockets...</div>
+      </div>
+     </div>
+    </section>
+
+    <!-- ==================== STREAMING STATE ==================== -->
+    <section id="panel-streaming" class="panel">
+     <div class="streaming-visualizer">
+      <div class="progress-ring-container">
+       <svg class="progress-ring-svg" viewBox="0 0 160 160">
+        <!-- Track circle -->
+        <circle class="progress-ring-track" cx="80" cy="80" r="70" />
+        <!-- Active progress circle -->
+        <circle class="progress-ring-fill" id="progress-ring-fill" cx="80" cy="80" r="70" stroke-dasharray="439.8" stroke-dashoffset="439.8" />
+       </svg>
+       <div class="progress-ring-content">
+        <span id="progress-percentage" class="percentage-txt">0%</span>
+        <span id="progress-speed" class="speed-txt">0.0 MB/s</span>
+       </div>
+      </div>
+      
+      <h2 id="streaming-direction-txt" class="panel-title text-center mt-6">Streaming Data</h2>
+      
+      <div class="file-card mt-6">
+       <div class="file-card-details">
+        <svg class="file-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        <div class="file-card-meta">
+         <span id="stream-file-name" class="file-name-txt">archive.zip</span>
+         <div class="progress-detail-text">
+          <span id="stream-file-transferred">0 MB</span>
+          <span class="text-separator">/</span>
+          <span id="stream-file-total">0 MB</span>
+         </div>
+        </div>
+       </div>
+      </div>
+      
+      <div class="time-estimate mt-4 text-center">
+       Estimated time remaining: <strong id="time-remaining-txt">Calculating...</strong>
+      </div>
+     </div>
+    </section>
+
+    <!-- ==================== COMPLETED STATE ==================== -->
+    <section id="panel-completed" class="panel">
+     <div class="success-screen">
+      <div class="success-icon-wrapper">
+       <svg class="success-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <rect x="2" y="2" width="20" height="20" rx="10" class="circle-path" />
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" class="check-path" />
+       </svg>
+      </div>
+      
+      <h2 id="completed-title-txt" class="panel-title text-center mt-6">File Transferred Successfully</h2>
+      <p id="completed-subtitle-txt" class="panel-subtitle text-center">The WebRTC datachannel streamed the binary packets directly with zero server logging.</p>
+      
+      <div class="receipt-card mt-6">
+       <div class="receipt-row">
+        <span class="receipt-label">Filename</span>
+        <span id="receipt-filename" class="receipt-value truncate">archive.zip</span>
+       </div>
+       <div class="receipt-row">
+        <span class="receipt-label">Size</span>
+        <span id="receipt-size" class="receipt-value">45.2 MB</span>
+       </div>
+       <div class="receipt-row">
+        <span class="receipt-label">Average Speed</span>
+        <span id="receipt-speed" class="receipt-value">4.2 MB/s</span>
+       </div>
+       <div class="receipt-row">
+        <span class="receipt-label">Transfer Time</span>
+        <span id="receipt-duration" class="receipt-value">11.8s</span>
+       </div>
+      </div>
+
+      <button id="btn-success-reset" class="btn btn-primary w-full mt-8" type="button">Send/Receive Another</button>
+     </div>
+    </section>
+
+    <!-- ==================== FAILED STATE ==================== -->
+    <section id="panel-failed" class="panel">
+     <div class="error-screen">
+      <div class="error-icon-wrapper">
+       <svg class="error-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <rect x="2" y="2" width="20" height="20" rx="10" class="circle-path" />
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01" />
+       </svg>
+      </div>
+      
+      <h2 class="panel-title text-center mt-6">Connection Terminated</h2>
+      <p class="panel-subtitle text-center">The peer-to-peer connection encountered an unrecoverable handshake or network error.</p>
+      
+      <div class="error-details-box mt-6" id="error-details-box">
+       No ICE candidates succeeded, indicating a strict symmetric NAT or firewall blocking WebRTC DataChannels.
+      </div>
+
+      <button id="btn-error-reset" class="btn btn-primary w-full mt-8" type="button">Try Again</button>
+     </div>
+    </section>
+
+   </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="app-footer">
+   <div class="footer-links">
+    <span class="footer-item">100% Serverless</span>
+    <span class="footer-dot">•</span>
+    <span class="footer-item">End-to-End Encrypted</span>
+    <span class="footer-dot">•</span>
+    <span class="footer-item">Offline Capable</span>
+   </div>
+   <div class="footer-version">v1.0.0</div>
+  </footer>
+ </div>
+
+ <script src="app.js"></script>
+</body>
+</html>

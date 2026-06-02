@@ -1,0 +1,19 @@
+# Local system files
+.DS_Store
+Thumbs.db
+
+# Project-specific / IDE metadata
+.vscode/
+.idea/
+.antigravitycli/
+.gemini/
+
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
