@@ -145,6 +145,31 @@ h1, h2, h3, h4 {
  letter-spacing: -0.01em;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.github-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  transition: color 0.2s ease, transform 0.2s ease;
+  text-decoration: none;
+}
+
+.github-link:hover {
+  color: var(--accent-emerald);
+  transform: scale(1.08);
+}
+
+.github-icon {
+  width: 22px;
+  height: 22px;
+}
+
 .header-badge {
  display: flex;
  align-items: center;
