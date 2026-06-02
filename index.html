@@ -10,6 +10,7 @@
  
  <!-- CDNs for QR and Compression -->
  <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js" integrity="sha512-g2TeAWw5GPnX7z0Kn8nFbYfeHcvAu/tx6d6mrLe/90mkCxO+RcptyYpksUz35EO337F83bZwcmUyHiHamspkfg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+ <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js" integrity="sha512-pUhApVQtLbnpLtJn6DuzDD5o2xtmLJnJ7oBoMsBnzOkVkpqofGLGPaBJ6ayD2zQe3lCgCibhJBi4cj5wAxwVKA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 </head>
@@ -55,12 +56,12 @@
       
       <!-- Send Card (Drop Zone) -->
       <div id="dropzone" class="wizard-card">
-       <input type="file" id="file-input" class="wizard-card-input" aria-label="Choose file to send">
+       <input type="file" id="file-input" class="wizard-card-input" aria-label="Choose files to send" multiple>
        <svg class="wizard-card-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
        </svg>
-       <h2 class="wizard-card-title">Send File</h2>
-       <p class="wizard-card-desc">Drag & drop a file here, or click to browse local storage.</p>
+       <h2 class="wizard-card-title">Send Files</h2>
+       <p class="wizard-card-desc">Drag & drop files or folders here, or click to browse.</p>
       </div>
       
       <!-- Receive Card -->
@@ -84,8 +85,8 @@
        <div class="skeleton-line pulsing w-3/4"></div>
        <div class="skeleton-line pulsing w-1/2"></div>
       </div>
-      <h2 class="panel-title text-center mt-6">Analyzing Local Network</h2>
-      <p class="panel-subtitle text-center">Configuring WebRTC peer connection and gathering STUN route candidates...</p>
+      <h2 id="gathering-title" class="panel-title text-center mt-6">Analyzing Local Network</h2>
+      <p id="gathering-subtitle" class="panel-subtitle text-center">Configuring WebRTC peer connection and gathering STUN route candidates...</p>
      </div>
     </section>
 

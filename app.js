@@ -96,6 +96,8 @@
  const diagnosticLogsEl = document.getElementById('diagnostic-logs');
  const errorDetailsBoxEl = document.getElementById('error-details-box');
  const connectingStatusTxtEl = document.getElementById('connecting-status-txt');
+ const gatheringTitleEl = document.getElementById('gathering-title');
+ const gatheringSubtitleEl = document.getElementById('gathering-subtitle');
 
  // Receipt Elements
  const receiptFilenameEl = document.getElementById('receipt-filename');
@@ -218,6 +220,132 @@
   transitionTo(STATE_FAILED);
  }
 
+  // ==========================================================================
+  // MULTIPLE FILE PROCESSING & COMPRESSION
+  // ==========================================================================
+
+  async function readAllEntries(dirReader) {
+   let allEntries = [];
+   const readBatch = () => {
+    return new Promise((resolve) => {
+     dirReader.readEntries((entries) => {
+      resolve(entries);
+     }, (err) => {
+      logSystem(`Error reading directory entries: ${err.message}`, 'error');
+      resolve([]);
+     });
+    });
+   };
+   
+   let batch = await readBatch();
+   while (batch.length > 0) {
+    allEntries.push(...batch);
+    batch = await readBatch();
+   }
+   return allEntries;
+  }
+
+  async function traverseFileTree(item, path = "") {
+   if (item.isFile) {
+    const file = await new Promise((resolve) => item.file(resolve));
+    return [{ file, path: path + item.name }];
+   } else if (item.isDirectory) {
+    const dirReader = item.createReader();
+    const entries = await readAllEntries(dirReader);
+    const promises = entries.map(entry => traverseFileTree(entry, path + item.name + "/"));
+    const results = await Promise.all(promises);
+    return results.flat();
+   }
+   return [];
+  }
+
+  function updateGatheringText(title, subtitle) {
+   if (gatheringTitleEl) gatheringTitleEl.innerText = title;
+   if (gatheringSubtitleEl) gatheringSubtitleEl.innerText = subtitle;
+  }
+
+  async function packageFilesToZip(entries) {
+   const zip = new JSZip();
+   entries.forEach(entry => {
+    zip.file(entry.path, entry.file);
+   });
+   
+   let zipName = "qr-share-archive.zip";
+   if (entries.length > 0) {
+    // Check if they are all under a single root directory
+    const firstPathParts = entries[0].path.split('/');
+    if (firstPathParts.length > 1) {
+     const rootDirName = firstPathParts[0];
+     const allShareRoot = entries.every(e => e.path.startsWith(rootDirName + '/'));
+     if (allShareRoot) {
+      zipName = `${rootDirName}.zip`;
+     }
+    }
+    
+    if (zipName === "qr-share-archive.zip" && entries[0].file.name) {
+     const firstFileName = entries[0].file.name;
+     const dotIndex = firstFileName.lastIndexOf('.');
+     const baseName = dotIndex !== -1 ? firstFileName.substring(0, dotIndex) : firstFileName;
+     if (entries.length > 1) {
+      const othersCount = entries.length - 1;
+      zipName = `${baseName}_and_${othersCount}_others.zip`;
+     } else {
+      zipName = `${baseName}.zip`;
+     }
+    }
+   }
+   
+   const blob = await zip.generateAsync({ type: 'blob' }, (metadata) => {
+    const percent = Math.floor(metadata.percent);
+    updateGatheringText("Packaging Files", `Creating a secure, compressed ZIP archive containing ${entries.length} items (${percent}%)...`);
+   });
+   
+   return new File([blob], zipName, { type: "application/zip" });
+  }
+
+  async function processAndSendFiles(fileListOrItems, isDragDrop = false) {
+   try {
+    let entries = [];
+    
+    if (isDragDrop) {
+     const items = fileListOrItems;
+     const filePromises = [];
+     for (let i = 0; i < items.length; i++) {
+      const item = items[i].webkitGetAsEntry();
+      if (item) {
+       filePromises.push(traverseFileTree(item));
+      }
+     }
+     const fileLists = await Promise.all(filePromises);
+     entries = fileLists.flat();
+    } else {
+     const fileList = fileListOrItems;
+     for (let i = 0; i < fileList.length; i++) {
+      entries.push({ file: fileList[i], path: fileList[i].name });
+     }
+    }
+    
+    if (entries.length === 0) {
+     alert("No valid files selected.");
+     return;
+    }
+    
+    if (entries.length === 1 && !entries[0].path.includes('/')) {
+     startSenderFlow(entries[0].file);
+    } else {
+     transitionTo(STATE_GATHERING_ICE);
+     updateGatheringText("Packaging Files", `Analyzing and preparing ${entries.length} items...`);
+     
+     const zipFile = await packageFilesToZip(entries);
+     startSenderFlow(zipFile);
+    }
+   } catch (err) {
+    logSystem(`File processing failed: ${err.message}`, 'error');
+    alert(`Failed to process selected files: ${err.message}`);
+    transitionTo(STATE_IDLE);
+   }
+  }
+
  // ==========================================================================
  // SENDER ENGINE (Initiator)
  // ==========================================================================
@@ -232,6 +360,9 @@
   streamFileNameEl.innerText = file.name;
 
   transitionTo(STATE_GATHERING_ICE);
+  if (gatheringTitleEl) gatheringTitleEl.innerText = "Analyzing Local Network";
+  if (gatheringSubtitleEl) gatheringSubtitleEl.innerText = "Configuring WebRTC peer connection and gathering STUN route candidates...";
+
   initializePeerConnection();
 
   // Create primary transfer data channel
@@ -865,8 +996,9 @@
  // Welcome page input handlers
  if (fileInputEl) {
   fileInputEl.addEventListener('change', (e) => {
-   const file = e.target.files[0];
-   if (file) startSenderFlow(file);
+   if (e.target.files && e.target.files.length > 0) {
+    processAndSendFiles(e.target.files, false);
+   }
   });
  }
 
@@ -886,8 +1018,11 @@
   });
 
   dropzoneEl.addEventListener('drop', (e) => {
-   const file = e.dataTransfer.files[0];
-   if (file) startSenderFlow(file);
+   if (e.dataTransfer && e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+    processAndSendFiles(e.dataTransfer.items, true);
+   } else if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+    processAndSendFiles(e.dataTransfer.files, false);
+   }
   });
  }
 
