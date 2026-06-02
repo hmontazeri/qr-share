@@ -98,6 +98,7 @@
  const connectingStatusTxtEl = document.getElementById('connecting-status-txt');
  const gatheringTitleEl = document.getElementById('gathering-title');
  const gatheringSubtitleEl = document.getElementById('gathering-subtitle');
+ const logoEl = document.getElementById('logo');
 
  // Receipt Elements
  const receiptFilenameEl = document.getElementById('receipt-filename');
@@ -1026,7 +1027,25 @@
   });
  }
 
- btnReceiveModeEl.addEventListener('click', startReceiverFlow);
+  btnReceiveModeEl.addEventListener('click', startReceiverFlow);
+
+  // Logo session reset interaction
+  if (logoEl) {
+   const handleLogoReset = () => {
+    // Clear URL hash cleanly without page reload
+    if (window.location.hash) {
+     history.replaceState("", document.title, window.location.pathname + window.location.search);
+    }
+    transitionTo(STATE_IDLE);
+   };
+   logoEl.addEventListener('click', handleLogoReset);
+   logoEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+     e.preventDefault();
+     handleLogoReset();
+    }
+   });
+  }
 
  // Cancellation bindings
  [btnCancelSendEl, btnCancelReceiveEl, btnCancelResponseEl].forEach(btn => {
